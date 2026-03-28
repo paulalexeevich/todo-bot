@@ -1,0 +1,118 @@
+"""HTTP client for the data-api service. All DB access goes through here."""
+from datetime import datetime
+
+import httpx
+
+from config import settings
+from db.models import Discovery, Task
+
+_client: httpx.AsyncClient | None = None
+
+
+def _get() -> httpx.AsyncClient:
+    global _client
+    if _client is None:
+        _client = httpx.AsyncClient(
+            base_url=settings.data_api_url,
+            headers={"X-API-Key": settings.data_api_key},
+            timeout=30.0,
+        )
+    return _client
+
+
+def _to_task(d: dict) -> Task:
+    return Task(
+        id=d["id"],
+        text=d["text"],
+        type=d["type"],
+        created_at=datetime.fromisoformat(d["created_at"]),
+        status=d["status"],
+    )
+
+
+def _to_discovery(d: dict) -> Discovery:
+    return Discovery(
+        id=d["id"],
+        task_id=d["task_id"],
+        ran_at=datetime.fromisoformat(d["ran_at"]),
+        reddit_summary=d.get("reddit_summary"),
+        hn_summary=d.get("hn_summary"),
+        ph_summary=d.get("ph_summary"),
+        ih_summary=d.get("ih_summary"),
+        verdict=d.get("verdict"),
+        score=d.get("score"),
+        market_size=d.get("market_size"),
+        full_report=d.get("full_report"),
+    )
+
+
+async def create_task(text: str, type: str = "idea") -> int:
+    r = await _get().post("/tasks", json={"text": text, "type": type})
+    r.raise_for_status()
+    return r.json()["id"]
+
+
+async def get_recent_tasks(limit: int = 10) -> list[Task]:
+    r = await _get().get("/tasks", params={"limit": limit})
+    r.raise_for_status()
+    return [_to_task(d) for d in r.json()]
+
+
+async def get_pending_tasks(type: str | None = None) -> list[Task]:
+    params: dict = {"status": "pending"}
+    if type:
+        params["type"] = type
+    r = await _get().get("/tasks", params=params)
+    r.raise_for_status()
+    return [_to_task(d) for d in r.json()]
+
+
+async def get_task_by_id(task_id: int) -> Task | None:
+    r = await _get().get(f"/tasks/{task_id}")
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return _to_task(r.json())
+
+
+async def set_task_status(task_id: int, status: str) -> None:
+    r = await _get().patch(f"/tasks/{task_id}/status", json={"status": status})
+    r.raise_for_status()
+
+
+async def save_discovery(
+    task_id: int,
+    reddit_summary: str | None,
+    hn_summary: str | None,
+    ph_summary: str | None,
+    ih_summary: str | None,
+    verdict: str | None,
+    score: float | None,
+    market_size: str | None,
+    full_report: dict | None,
+) -> None:
+    r = await _get().post(f"/tasks/{task_id}/discovery", json={
+        "reddit_summary": reddit_summary,
+        "hn_summary": hn_summary,
+        "ph_summary": ph_summary,
+        "ih_summary": ih_summary,
+        "verdict": verdict,
+        "score": score,
+        "market_size": market_size,
+        "full_report": full_report,
+    })
+    r.raise_for_status()
+
+
+async def get_discovery_for_task(task_id: int) -> Discovery | None:
+    r = await _get().get(f"/tasks/{task_id}/discovery")
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return _to_discovery(r.json())
+
+
+async def get_task_counts() -> dict[str, int]:
+    r = await _get().get("/counts")
+    r.raise_for_status()
+    return r.json()

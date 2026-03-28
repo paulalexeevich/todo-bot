@@ -1,0 +1,25 @@
+services:
+  data-api:
+    build: ./data-api
+    env_file: .env
+    volumes:
+      - task_data:/app/data
+    ports:
+      - "8001:8001"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  idea-bot:
+    build: .
+    env_file: .env
+    depends_on:
+      data-api:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  task_data:

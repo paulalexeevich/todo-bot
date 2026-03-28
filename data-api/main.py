@@ -1,0 +1,142 @@
+import json
+import logging
+import os
+from contextlib import asynccontextmanager
+
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.security.api_key import APIKeyHeader
+from pydantic import BaseModel
+
+from database import (
+    db_create_task,
+    db_get_discovery,
+    db_get_task,
+    db_get_task_counts,
+    db_get_tasks,
+    db_save_discovery,
+    db_set_task_status,
+    init_db,
+)
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+API_KEY = os.environ.get("DATA_API_KEY", "")
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=True)
+
+
+async def verify_key(key: str = Security(api_key_header)) -> None:
+    if API_KEY and key != API_KEY:
+        raise HTTPException(status_code=403, detail="Invalid API key")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_db()
+    logger.info("Database initialized.")
+    yield
+
+
+app = FastAPI(title="Task Data API", lifespan=lifespan)
+
+
+# --- Request / Response models ---
+
+class TaskCreate(BaseModel):
+    text: str
+    type: str = "idea"
+
+
+class StatusUpdate(BaseModel):
+    status: str
+
+
+class DiscoveryCreate(BaseModel):
+    reddit_summary: str | None = None
+    hn_summary: str | None = None
+    ph_summary: str | None = None
+    ih_summary: str | None = None
+    verdict: str | None = None
+    score: float | None = None
+    market_size: str | None = None
+    full_report: dict | None = None
+
+
+# --- Helpers ---
+
+def _parse_full_report(row: dict) -> dict:
+    if row.get("full_report") and isinstance(row["full_report"], str):
+        try:
+            row["full_report"] = json.loads(row["full_report"])
+        except Exception:
+            pass
+    return row
+
+
+# --- Routes ---
+
+@app.get("/health")
+async def health():
+    return {"status": "ok"}
+
+
+@app.post("/tasks", dependencies=[Depends(verify_key)])
+async def create_task(body: TaskCreate):
+    task_id = await db_create_task(body.text, body.type)
+    return {"id": task_id}
+
+
+@app.get("/tasks", dependencies=[Depends(verify_key)])
+async def list_tasks(status: str | None = None, type: str | None = None, limit: int = 50):
+    tasks = await db_get_tasks(status=status, type=type, limit=limit)
+    return tasks
+
+
+@app.get("/tasks/{task_id}", dependencies=[Depends(verify_key)])
+async def get_task(task_id: int):
+    task = await db_get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    discovery = await db_get_discovery(task_id)
+    return {**task, "discovery": _parse_full_report(discovery) if discovery else None}
+
+
+@app.patch("/tasks/{task_id}/status", dependencies=[Depends(verify_key)])
+async def update_status(task_id: int, body: StatusUpdate):
+    task = await db_get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await db_set_task_status(task_id, body.status)
+    return {"ok": True}
+
+
+@app.post("/tasks/{task_id}/discovery", dependencies=[Depends(verify_key)])
+async def save_discovery(task_id: int, body: DiscoveryCreate):
+    task = await db_get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    discovery_id = await db_save_discovery(
+        task_id=task_id,
+        reddit_summary=body.reddit_summary,
+        hn_summary=body.hn_summary,
+        ph_summary=body.ph_summary,
+        ih_summary=body.ih_summary,
+        verdict=body.verdict,
+        score=body.score,
+        market_size=body.market_size,
+        full_report=body.full_report,
+    )
+    return {"id": discovery_id}
+
+
+@app.get("/tasks/{task_id}/discovery", dependencies=[Depends(verify_key)])
+async def get_discovery(task_id: int):
+    discovery = await db_get_discovery(task_id)
+    if not discovery:
+        raise HTTPException(status_code=404, detail="No discovery for this task")
+    return _parse_full_report(discovery)
+
+
+@app.get("/counts", dependencies=[Depends(verify_key)])
+async def task_counts():
+    return await db_get_task_counts()
