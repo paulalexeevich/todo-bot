@@ -1,3 +1,4 @@
+import asyncio
 import logging
 
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
@@ -14,10 +15,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+async def post_init(application) -> None:
+    # Claim the polling session: delete any existing webhook and flush pending updates.
+    # This prevents 409 Conflict when the container restarts.
+    await application.bot.delete_webhook(drop_pending_updates=True)
+    # Brief pause so Telegram can close any in-flight long-poll from the old instance.
+    await asyncio.sleep(2)
+    logger.info("Session claimed, starting polling.")
+
+
 def main() -> None:
     app = (
         ApplicationBuilder()
         .token(settings.telegram_bot_token)
+        .post_init(post_init)
         .build()
     )
 
@@ -36,7 +47,7 @@ def main() -> None:
     )
 
     logger.info("Bot starting (long polling)...")
-    app.run_polling(drop_pending_updates=True)
+    app.run_polling(drop_pending_updates=True, allowed_updates=["message"])
 
 
 if __name__ == "__main__":
