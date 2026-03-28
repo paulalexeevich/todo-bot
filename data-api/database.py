@@ -75,6 +75,19 @@ async def init_db() -> None:
                 )
             """)
 
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS offers (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id    INTEGER NOT NULL REFERENCES tasks(id),
+                title      TEXT NOT NULL,
+                price      TEXT,
+                store      TEXT,
+                url        TEXT NOT NULL,
+                snippet    TEXT,
+                found_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
         await db.commit()
 
 
@@ -129,6 +142,24 @@ async def db_set_task_type(task_id: int, type: str) -> None:
     async with get_db() as db:
         await db.execute("UPDATE tasks SET type = ? WHERE id = ?", (type, task_id))
         await db.commit()
+
+
+async def db_save_offer(task_id: int, title: str, price: str | None, store: str | None, url: str, snippet: str | None) -> int:
+    async with get_db() as db:
+        cursor = await db.execute(
+            "INSERT INTO offers (task_id, title, price, store, url, snippet) VALUES (?, ?, ?, ?, ?, ?)",
+            (task_id, title, price, store, url, snippet),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def db_get_offers(task_id: int) -> list[dict]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT * FROM offers WHERE task_id = ? ORDER BY id ASC", (task_id,)
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
 
 
 async def db_save_discovery(

@@ -117,6 +117,19 @@ async def get_discovery_for_task(task_id: int) -> Discovery | None:
     return _to_discovery(r.json())
 
 
+async def save_offer(task_id: int, title: str, price: str | None, store: str | None, url: str, snippet: str | None = None) -> None:
+    r = await _get().post(f"/tasks/{task_id}/offers", json={
+        "title": title, "price": price, "store": store, "url": url, "snippet": snippet,
+    })
+    r.raise_for_status()
+
+
+async def get_offers(task_id: int) -> list[dict]:
+    r = await _get().get(f"/tasks/{task_id}/offers")
+    r.raise_for_status()
+    return r.json()
+
+
 async def get_task_counts() -> dict[str, int]:
     r = await _get().get("/counts")
     r.raise_for_status()

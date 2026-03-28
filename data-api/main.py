@@ -10,10 +10,12 @@ from pydantic import BaseModel
 from database import (
     db_create_task,
     db_get_discovery,
+    db_get_offers,
     db_get_task,
     db_get_task_counts,
     db_get_tasks,
     db_save_discovery,
+    db_save_offer,
     db_set_task_status,
     db_set_task_type,
     init_db,
@@ -54,6 +56,14 @@ class StatusUpdate(BaseModel):
 
 class TypeUpdate(BaseModel):
     type: str
+
+
+class OfferCreate(BaseModel):
+    title: str
+    price: str | None = None
+    store: str | None = None
+    url: str
+    snippet: str | None = None
 
 
 class DiscoveryCreate(BaseModel):
@@ -141,6 +151,20 @@ async def save_discovery(task_id: int, body: DiscoveryCreate):
         full_report=body.full_report,
     )
     return {"id": discovery_id}
+
+
+@app.get("/tasks/{task_id}/offers", dependencies=[Depends(verify_key)])
+async def get_offers(task_id: int):
+    return await db_get_offers(task_id)
+
+
+@app.post("/tasks/{task_id}/offers", dependencies=[Depends(verify_key)])
+async def save_offer(task_id: int, body: OfferCreate):
+    task = await db_get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    offer_id = await db_save_offer(task_id, body.title, body.price, body.store, body.url, body.snippet)
+    return {"id": offer_id}
 
 
 @app.get("/tasks/{task_id}/discovery", dependencies=[Depends(verify_key)])

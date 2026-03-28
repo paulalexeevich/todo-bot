@@ -22,6 +22,7 @@ _TYPE_EMOJI = {
 
 _DISCOVERY_TYPES = {"idea"}
 _GITHUB_TYPES = {"architecture", "learning"}
+_BUYER_TYPES = {"shopping"}
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -50,6 +51,13 @@ async def _classify_and_followup(task_id: int, text: str, update: Update) -> Non
 
         if classification.type in _DISCOVERY_TYPES:
             lines.append(f"Discovery runs tonight at {settings.discovery_hour:02d}:{settings.discovery_minute:02d} UTC.")
+
+        if classification.type in _BUYER_TYPES:
+            lines.append("Searching for offers…")
+            await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
+            from bot.jobs.buyer import run_buyer
+            await run_buyer(task_id, text, update.get_bot())
+            return
 
         if classification.type in _GITHUB_TYPES:
             github_url = await save_to_github(

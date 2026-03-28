@@ -14,6 +14,7 @@ TASK_TYPES = {
     "learning": "lesson learned, personal insight, or discovery worth remembering",
     "architecture": "technical design decision, system architecture, or engineering choice",
     "question": "open question to research or think through",
+    "shopping": "request to find and compare buying options for a product or item",
 }
 
 _TYPE_LIST = "\n".join(f'- {k}: {v}' for k, v in TASK_TYPES.items())
@@ -35,6 +36,7 @@ Types:
 {_TYPE_LIST}
 
 Rules:
+- If it mentions finding/buying/searching for a product to purchase → shopping
 - If it describes a startup/product concept → idea
 - If it starts with a verb and is actionable → todo
 - If it records a decision or technical tradeoff → architecture

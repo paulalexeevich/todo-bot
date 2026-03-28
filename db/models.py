@@ -29,6 +29,15 @@ class DiscoveryResult:
 
 
 @dataclass
+class Offer:
+    title: str
+    url: str
+    store: str
+    price: str | None = None
+    snippet: str | None = None
+
+
+@dataclass
 class Discovery:
     id: int
     task_id: int
