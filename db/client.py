@@ -80,6 +80,11 @@ async def set_task_status(task_id: int, status: str) -> None:
     r.raise_for_status()
 
 
+async def set_task_type(task_id: int, type: str) -> None:
+    r = await _get().patch(f"/tasks/{task_id}/type", json={"type": type})
+    r.raise_for_status()
+
+
 async def save_discovery(
     task_id: int,
     reddit_summary: str | None,

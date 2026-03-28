@@ -125,6 +125,12 @@ async def db_set_task_status(task_id: int, status: str) -> None:
         await db.commit()
 
 
+async def db_set_task_type(task_id: int, type: str) -> None:
+    async with get_db() as db:
+        await db.execute("UPDATE tasks SET type = ? WHERE id = ?", (type, task_id))
+        await db.commit()
+
+
 async def db_save_discovery(
     task_id: int,
     reddit_summary: str | None,

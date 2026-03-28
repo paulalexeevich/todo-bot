@@ -15,6 +15,7 @@ from database import (
     db_get_tasks,
     db_save_discovery,
     db_set_task_status,
+    db_set_task_type,
     init_db,
 )
 
@@ -49,6 +50,10 @@ class TaskCreate(BaseModel):
 
 class StatusUpdate(BaseModel):
     status: str
+
+
+class TypeUpdate(BaseModel):
+    type: str
 
 
 class DiscoveryCreate(BaseModel):
@@ -107,6 +112,15 @@ async def update_status(task_id: int, body: StatusUpdate):
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     await db_set_task_status(task_id, body.status)
+    return {"ok": True}
+
+
+@app.patch("/tasks/{task_id}/type", dependencies=[Depends(verify_key)])
+async def update_type(task_id: int, body: TypeUpdate):
+    task = await db_get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await db_set_task_type(task_id, body.type)
     return {"ok": True}
 
 
