@@ -3,7 +3,7 @@ import logging
 
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
 
-from bot.handlers.commands import cmd_debug_run, cmd_list, cmd_report, cmd_status
+from bot.handlers.commands import cmd_debug_run, cmd_list, cmd_location, cmd_report, cmd_sethome, cmd_setlocation, cmd_status
 from bot.handlers.idea import handle_message
 from bot.jobs.discovery import run_discovery
 from config import settings
@@ -36,6 +36,9 @@ def main() -> None:
     app.add_handler(CommandHandler("report", cmd_report))
     app.add_handler(CommandHandler("status", cmd_status))
     app.add_handler(CommandHandler("debug_run", cmd_debug_run))
+    app.add_handler(CommandHandler("location", cmd_location))
+    app.add_handler(CommandHandler("setlocation", cmd_setlocation))
+    app.add_handler(CommandHandler("sethome", cmd_sethome))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
 

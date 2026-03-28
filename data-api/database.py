@@ -76,15 +76,23 @@ async def init_db() -> None:
             """)
 
         await db.execute("""
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            )
+        """)
+
+        await db.execute("""
             CREATE TABLE IF NOT EXISTS offers (
-                id         INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id    INTEGER NOT NULL REFERENCES tasks(id),
-                title      TEXT NOT NULL,
-                price      TEXT,
-                store      TEXT,
-                url        TEXT NOT NULL,
-                snippet    TEXT,
-                found_at   TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                id               INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id          INTEGER NOT NULL REFERENCES tasks(id),
+                title            TEXT NOT NULL,
+                price            TEXT,
+                store            TEXT,
+                url              TEXT NOT NULL,
+                snippet          TEXT,
+                location_context TEXT,
+                found_at         TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
@@ -144,11 +152,27 @@ async def db_set_task_type(task_id: int, type: str) -> None:
         await db.commit()
 
 
-async def db_save_offer(task_id: int, title: str, price: str | None, store: str | None, url: str, snippet: str | None) -> int:
+async def db_get_setting(key: str) -> str | None:
+    async with get_db() as db:
+        async with db.execute("SELECT value FROM settings WHERE key = ?", (key,)) as cur:
+            row = await cur.fetchone()
+    return row["value"] if row else None
+
+
+async def db_set_setting(key: str, value: str) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+        await db.commit()
+
+
+async def db_save_offer(task_id: int, title: str, price: str | None, store: str | None, url: str, snippet: str | None, location_context: str | None = None) -> int:
     async with get_db() as db:
         cursor = await db.execute(
-            "INSERT INTO offers (task_id, title, price, store, url, snippet) VALUES (?, ?, ?, ?, ?, ?)",
-            (task_id, title, price, store, url, snippet),
+            "INSERT INTO offers (task_id, title, price, store, url, snippet, location_context) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (task_id, title, price, store, url, snippet, location_context),
         )
         await db.commit()
         return cursor.lastrowid

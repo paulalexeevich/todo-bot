@@ -53,10 +53,17 @@ async def _classify_and_followup(task_id: int, text: str, update: Update) -> Non
             lines.append(f"Discovery runs tonight at {settings.discovery_hour:02d}:{settings.discovery_minute:02d} UTC.")
 
         if classification.type in _BUYER_TYPES:
-            lines.append("Searching for offers…")
+            loc_hint = {"local": "📍 local stores", "online": "🌐 online", "any": "🔍 all sources"}.get(classification.location, "")
+            lines.append(f"Searching {loc_hint}…")
             await update.message.reply_text("\n".join(lines), parse_mode="Markdown")
             from bot.jobs.buyer import run_buyer
-            await run_buyer(task_id, text, update.get_bot())
+            await run_buyer(
+                task_id=task_id,
+                task_text=text,
+                search_query=classification.search_query or text,
+                location_type=classification.location,
+                bot=update.get_bot(),
+            )
             return
 
         if classification.type in _GITHUB_TYPES:

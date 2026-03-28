@@ -1,5 +1,6 @@
-from langgraph.graph import END, START, StateGraph
 from typing import TypedDict
+
+from langgraph.graph import END, START, StateGraph
 
 from agent.nodes.buyer import buyer_node
 from db.models import Offer
@@ -7,6 +8,10 @@ from db.models import Offer
 
 class BuyerState(TypedDict):
     task_text: str
+    search_query: str
+    location_type: str      # local | online | any
+    current_location: str   # e.g. "Amsterdam, Netherlands"
+    home_location: str      # e.g. "Moscow, Russia"
     offers: list[Offer]
 
 

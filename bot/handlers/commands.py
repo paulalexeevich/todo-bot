@@ -5,7 +5,8 @@ from telegram import Update
 from telegram.ext import ContextTypes
 
 from config import settings
-from db.client import get_discovery_for_task, get_recent_tasks, get_task_by_id, get_task_counts
+from db.client import get_discovery_for_task, get_recent_tasks, get_setting, get_task_by_id, get_task_counts, set_setting
+from bot.jobs.buyer import HOME_KEY, CURRENT_KEY
 
 _STATUS_EMOJI = {"pending": "⏳", "processing": "🔄", "done": "✅", "error": "❌"}
 _TYPE_EMOJI = {"idea": "💡", "todo": "📋", "note": "📝"}
@@ -94,6 +95,41 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         f"Tasks: {total} total | {pending} pending | {done} done | {error} errors\n"
         f"Next discovery run: {next_run.strftime('%Y-%m-%d %H:%M UTC')}"
     )
+
+
+async def cmd_location(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _guard(update):
+        return
+    home = await get_setting(HOME_KEY) or settings.home_location or "not set"
+    current = await get_setting(CURRENT_KEY) or home
+    await update.message.reply_text(
+        f"🏠 Home: *{home}*\n📍 Current: *{current}*\n\n"
+        "Use `/setlocation <city, country>` to update current location.\n"
+        "Use `/sethome <city, country>` to update home.",
+        parse_mode="Markdown",
+    )
+
+
+async def cmd_setlocation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _guard(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /setlocation <city, country>\nExample: /setlocation Amsterdam, Netherlands")
+        return
+    location = " ".join(context.args)
+    await set_setting(CURRENT_KEY, location)
+    await update.message.reply_text(f"📍 Current location set to *{location}*", parse_mode="Markdown")
+
+
+async def cmd_sethome(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _guard(update):
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /sethome <city, country>\nExample: /sethome Moscow, Russia")
+        return
+    location = " ".join(context.args)
+    await set_setting(HOME_KEY, location)
+    await update.message.reply_text(f"🏠 Home location set to *{location}*", parse_mode="Markdown")
 
 
 async def cmd_debug_run(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

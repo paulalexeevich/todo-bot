@@ -1,7 +1,7 @@
 """Fast single-call LLM task classifier. No LangGraph needed — one prompt, one response."""
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from config import settings
 
@@ -23,8 +23,10 @@ _TYPE_LIST = "\n".join(f'- {k}: {v}' for k, v in TASK_TYPES.items())
 @dataclass
 class TaskClassification:
     type: str
-    title: str       # short form, max ~60 chars
-    reason: str      # why this type was chosen
+    title: str                      # short form, max ~60 chars
+    reason: str                     # why this type was chosen
+    search_query: str = ""          # cleaned search term (for shopping)
+    location: str = "any"           # local | online | any (for shopping)
 
 
 async def classify_task(text: str) -> TaskClassification:
@@ -43,21 +45,37 @@ Rules:
 - If it's something the person learned → learning
 - Default to note if nothing else fits
 
-Respond with JSON only, no markdown:
-{{"type": "...", "title": "...", "reason": "..."}}
+For shopping tasks also determine:
+- location: "local" if the item typically requires visiting a physical store or is location-specific (food, haircut, local service, clothes fitting), "online" if it can be ordered and shipped anywhere, "any" if both work
+- search_query: a clean search term optimized for finding the item (remove filler words, keep product + key attributes)
 
-Title should be a concise version of the message (max 60 chars)."""
+Respond with JSON only, no markdown:
+{{"type": "...", "title": "...", "reason": "...", "search_query": "...", "location": "..."}}
+
+Title should be a concise version of the message (max 60 chars).
+search_query and location are only meaningful for shopping tasks; use "" and "any" otherwise."""
 
     try:
         result = await _call_llm(prompt)
-        data = json.loads(result.strip())
+        # strip possible markdown fences
+        text_result = result.strip()
+        if "```" in text_result:
+            text_result = text_result.split("```")[1]
+            if text_result.startswith("json"):
+                text_result = text_result[4:]
+        data = json.loads(text_result.strip())
         task_type = data.get("type", "note")
         if task_type not in TASK_TYPES:
             task_type = "note"
+        location = data.get("location", "any")
+        if location not in ("local", "online", "any"):
+            location = "any"
         return TaskClassification(
             type=task_type,
             title=data.get("title", text[:60]),
             reason=data.get("reason", ""),
+            search_query=data.get("search_query", text),
+            location=location,
         )
     except Exception as e:
         logger.warning("Classification failed, defaulting to 'note': %s", e)
@@ -69,7 +87,7 @@ async def _call_llm(prompt: str) -> str:
         from langchain_google_genai import ChatGoogleGenerativeAI
         from langchain_core.messages import HumanMessage
         llm = ChatGoogleGenerativeAI(
-            model="gemini-3.1-flash-lite-preview",  # fast + cheap for classification
+            model="gemini-3.1-flash-lite-preview",
             google_api_key=settings.google_gemini_api_key,
         )
         response = await llm.ainvoke([HumanMessage(content=prompt)])

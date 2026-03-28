@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     github_token: str = ""
     github_repo: str = ""  # format: "owner/repo"
 
+    home_location: str = ""  # e.g. "Moscow, Russia" — fallback if not set via /sethome
+
     @property
     def discovery_time(self) -> datetime.time:
         return datetime.time(self.discovery_hour, self.discovery_minute, tzinfo=datetime.timezone.utc)

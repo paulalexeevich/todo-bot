@@ -117,9 +117,23 @@ async def get_discovery_for_task(task_id: int) -> Discovery | None:
     return _to_discovery(r.json())
 
 
-async def save_offer(task_id: int, title: str, price: str | None, store: str | None, url: str, snippet: str | None = None) -> None:
+async def get_setting(key: str) -> str | None:
+    r = await _get().get(f"/settings/{key}")
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return r.json()["value"]
+
+
+async def set_setting(key: str, value: str) -> None:
+    r = await _get().put(f"/settings/{key}", json={"value": value})
+    r.raise_for_status()
+
+
+async def save_offer(task_id: int, title: str, price: str | None, store: str | None, url: str, snippet: str | None = None, location_context: str | None = None) -> None:
     r = await _get().post(f"/tasks/{task_id}/offers", json={
-        "title": title, "price": price, "store": store, "url": url, "snippet": snippet,
+        "title": title, "price": price, "store": store, "url": url,
+        "snippet": snippet, "location_context": location_context,
     })
     r.raise_for_status()
 
