@@ -1,4 +1,18 @@
-# Idea Bot — CLAUDE.md
+# todo-bot — CLAUDE.md
+
+## ToDo System — Repository Map
+
+This repo is part of the **ToDo** personal productivity system. All repositories:
+
+| Repo | Type | Status | Description |
+|------|------|--------|-------------|
+| [paulalexeevich/todo-bot](https://github.com/paulalexeevich/todo-bot) | UI | current repo | Telegram interface |
+| [paulalexeevich/todo-dashboard](https://github.com/paulalexeevich/todo-dashboard) | UI | active | Next.js web interface |
+| [paulalexeevich/todo-api](https://github.com/paulalexeevich/todo-api) | Core | planned | Task storage, classifier, orchestration, scheduler |
+| [paulalexeevich/discovery-agent](https://github.com/paulalexeevich/discovery-agent) | Agent | planned | Standalone idea validation pipeline |
+| [paulalexeevich/buyer-agent](https://github.com/paulalexeevich/buyer-agent) | Agent | planned | Standalone product search pipeline |
+
+---
 
 ## Project Overview
 
