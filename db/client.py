@@ -27,6 +27,12 @@ def _to_task(d: dict) -> Task:
         type=d["type"],
         created_at=datetime.fromisoformat(d["created_at"]),
         status=d["status"],
+        deadline=d.get("deadline"),
+        urgency=d.get("urgency"),
+        due_date=d.get("due_date"),
+        due_time=d.get("due_time"),
+        notified_at=d.get("notified_at"),
+        completed_notified=d.get("completed_notified", 0),
     )
 
 
@@ -152,5 +158,52 @@ async def get_offers(task_id: int) -> list[dict]:
 
 async def get_task_counts() -> dict[str, int]:
     r = await _get().get("/counts")
+    r.raise_for_status()
+    return r.json()
+
+
+async def update_task_reminder(task_id: int, due_date: str | None, due_time: str | None) -> None:
+    r = await _get().patch(f"/tasks/{task_id}/reminder", json={"due_date": due_date, "due_time": due_time})
+    r.raise_for_status()
+
+
+async def get_due_reminders(now_iso: str) -> list[dict]:
+    r = await _get().get("/reminders/due", params={"now": now_iso})
+    r.raise_for_status()
+    return r.json()
+
+
+async def mark_task_notified(task_id: int) -> None:
+    r = await _get().post(f"/tasks/{task_id}/notified")
+    r.raise_for_status()
+
+
+async def get_newly_done_tasks() -> list[dict]:
+    r = await _get().get("/tasks/done/new")
+    r.raise_for_status()
+    return r.json()
+
+
+async def mark_completion_notified(task_id: int) -> None:
+    r = await _get().post(f"/tasks/{task_id}/completion-notified")
+    r.raise_for_status()
+
+
+# ---------------------------------------------------------------------------
+# Messages — conversation history
+# ---------------------------------------------------------------------------
+
+async def save_message(role: str, content: str) -> None:
+    """Fire-and-forget: save a Telegram exchange. Errors are non-fatal."""
+    try:
+        r = await _get().post("/messages", json={"role": role, "content": content})
+        r.raise_for_status()
+    except Exception:
+        pass  # message logging must never break the bot
+
+
+async def get_recent_messages(limit: int = 20) -> list[dict]:
+    """Return last N messages in chronological order [{role, content, created_at}]."""
+    r = await _get().get("/messages/recent", params={"limit": limit})
     r.raise_for_status()
     return r.json()

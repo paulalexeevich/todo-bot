@@ -103,6 +103,14 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE tasks ADD COLUMN deadline TEXT")
         if task_cols and "urgency" not in task_cols:
             await db.execute("ALTER TABLE tasks ADD COLUMN urgency TEXT")
+        if task_cols and "due_time" not in task_cols:
+            await db.execute("ALTER TABLE tasks ADD COLUMN due_time TEXT")
+        if task_cols and "notified_at" not in task_cols:
+            await db.execute("ALTER TABLE tasks ADD COLUMN notified_at TEXT")
+        if task_cols and "completed_notified" not in task_cols:
+            await db.execute("ALTER TABLE tasks ADD COLUMN completed_notified INTEGER DEFAULT 0")
+            # Silence existing done tasks so they don't trigger notifications
+            await db.execute("UPDATE tasks SET completed_notified = 1 WHERE status = 'done'")
 
         # Migrate offers table: add missing columns
         async with db.execute("PRAGMA table_info(offers)") as cur:
@@ -111,6 +119,17 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE offers ADD COLUMN location_context TEXT")
         if offer_cols and "delivery_days_estimate" not in offer_cols:
             await db.execute("ALTER TABLE offers ADD COLUMN delivery_days_estimate INTEGER")
+
+        # Messages table — every Telegram exchange saved here
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS messages (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                role       TEXT NOT NULL,
+                content    TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                processed  INTEGER DEFAULT 0
+            )
+        """)
 
         await db.commit()
 
@@ -255,3 +274,106 @@ async def db_get_task_counts() -> dict[str, int]:
         async with db.execute("SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status") as cur:
             rows = await cur.fetchall()
     return {r["status"]: r["cnt"] for r in rows}
+
+
+async def db_update_task_reminder(task_id: int, due_date: str | None, due_time: str | None) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE tasks SET due_date = ?, due_time = ? WHERE id = ?",
+            (due_date, due_time, task_id),
+        )
+        await db.commit()
+
+
+async def db_get_due_reminders(now_iso: str) -> list[dict]:
+    """Return reminder tasks whose due_date+due_time <= now and not yet notified."""
+    async with get_db() as db:
+        async with db.execute(
+            """
+            SELECT * FROM tasks
+            WHERE type = 'reminder'
+              AND status != 'done'
+              AND notified_at IS NULL
+              AND due_date IS NOT NULL
+              AND due_time IS NOT NULL
+              AND (due_date || 'T' || due_time) <= ?
+            ORDER BY due_date ASC, due_time ASC
+            """,
+            (now_iso,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def db_mark_notified(task_id: int, notified_at: str) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE tasks SET notified_at = ?, status = 'done' WHERE id = ?",
+            (notified_at, task_id),
+        )
+        await db.commit()
+
+
+async def db_get_newly_done_tasks() -> list[dict]:
+    """Tasks recently marked done but not yet notified (excludes reminder type)."""
+    async with get_db() as db:
+        async with db.execute(
+            """
+            SELECT * FROM tasks
+            WHERE status = 'done'
+              AND (completed_notified IS NULL OR completed_notified = 0)
+              AND type != 'reminder'
+            ORDER BY id ASC
+            """,
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def db_mark_completion_notified(task_id: int) -> None:
+    async with get_db() as db:
+        await db.execute(
+            "UPDATE tasks SET completed_notified = 1 WHERE id = ?", (task_id,)
+        )
+        await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Messages (conversation history for short-term + long-term memory)
+# ---------------------------------------------------------------------------
+
+async def db_save_message(role: str, content: str) -> int:
+    async with get_db() as db:
+        cursor = await db.execute(
+            "INSERT INTO messages (role, content) VALUES (?, ?)", (role, content)
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def db_get_recent_messages(limit: int = 20) -> list[dict]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id, role, content, created_at FROM messages ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return list(reversed([dict(r) for r in rows]))  # chronological order
+
+
+async def db_get_unprocessed_messages(limit: int = 50) -> list[dict]:
+    async with get_db() as db:
+        async with db.execute(
+            "SELECT id, role, content, created_at FROM messages WHERE processed = 0 ORDER BY id ASC LIMIT ?",
+            (limit,),
+        ) as cur:
+            return [dict(r) for r in await cur.fetchall()]
+
+
+async def db_mark_messages_processed(ids: list[int]) -> None:
+    if not ids:
+        return
+    placeholders = ",".join("?" for _ in ids)
+    async with get_db() as db:
+        await db.execute(
+            f"UPDATE messages SET processed = 1 WHERE id IN ({placeholders})", ids
+        )
+        await db.commit()

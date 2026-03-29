@@ -24,6 +24,7 @@ class Settings(BaseSettings):
 
     data_api_url: str = "http://data-api:8001"
     data_api_key: str = ""
+    memory_agent_url: str = "http://memory-agent:8002"
 
     github_token: str = ""
     github_repo: str = ""  # format: "owner/repo"

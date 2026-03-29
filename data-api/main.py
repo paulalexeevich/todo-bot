@@ -10,17 +10,26 @@ from pydantic import BaseModel
 from database import (
     db_create_task,
     db_get_discovery,
+    db_get_due_reminders,
+    db_get_newly_done_tasks,
     db_get_offers,
+    db_get_recent_messages,
     db_get_setting,
     db_get_task,
     db_get_task_counts,
     db_get_tasks,
+    db_get_unprocessed_messages,
+    db_mark_completion_notified,
+    db_mark_messages_processed,
+    db_mark_notified,
     db_save_discovery,
+    db_save_message,
     db_save_offer,
     db_set_setting,
     db_set_task_status,
     db_set_task_type,
     db_update_task_deadline,
+    db_update_task_reminder,
     init_db,
 )
 
@@ -70,6 +79,11 @@ class DeadlineUpdate(BaseModel):
     urgency: str | None = None    # asap | fast | week | flexible | any
 
 
+class ReminderUpdate(BaseModel):
+    due_date: str | None = None   # ISO date: YYYY-MM-DD
+    due_time: str | None = None   # HH:MM (24h)
+
+
 class OfferCreate(BaseModel):
     title: str
     price: str | None = None
@@ -78,6 +92,15 @@ class OfferCreate(BaseModel):
     snippet: str | None = None
     location_context: str | None = None
     delivery_days_estimate: int | None = None
+
+
+class MessageCreate(BaseModel):
+    role: str    # "user" or "bot"
+    content: str
+
+
+class MessagesProcessed(BaseModel):
+    ids: list[int]
 
 
 class DiscoveryCreate(BaseModel):
@@ -119,6 +142,11 @@ async def create_task(body: TaskCreate):
 async def list_tasks(status: str | None = None, type: str | None = None, limit: int = 50):
     tasks = await db_get_tasks(status=status, type=type, limit=limit)
     return tasks
+
+
+@app.get("/tasks/done/new", dependencies=[Depends(verify_key)])
+async def get_newly_done():
+    return await db_get_newly_done_tasks()
 
 
 @app.get("/tasks/{task_id}", dependencies=[Depends(verify_key)])
@@ -198,6 +226,35 @@ async def get_discovery(task_id: int):
     return _parse_full_report(discovery)
 
 
+@app.patch("/tasks/{task_id}/reminder", dependencies=[Depends(verify_key)])
+async def update_reminder(task_id: int, body: ReminderUpdate):
+    task = await db_get_task(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    await db_update_task_reminder(task_id, body.due_date, body.due_time)
+    return {"ok": True}
+
+
+@app.get("/reminders/due", dependencies=[Depends(verify_key)])
+async def get_due_reminders(now: str):
+    """now = ISO datetime string YYYY-MM-DDTHH:MM passed by caller."""
+    return await db_get_due_reminders(now)
+
+
+@app.post("/tasks/{task_id}/notified", dependencies=[Depends(verify_key)])
+async def mark_notified(task_id: int):
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+    await db_mark_notified(task_id, now_iso)
+    return {"ok": True}
+
+
+@app.post("/tasks/{task_id}/completion-notified", dependencies=[Depends(verify_key)])
+async def mark_completion_notified(task_id: int):
+    await db_mark_completion_notified(task_id)
+    return {"ok": True}
+
+
 @app.get("/settings/{key}", dependencies=[Depends(verify_key)])
 async def get_setting(key: str):
     value = await db_get_setting(key)
@@ -215,3 +272,29 @@ async def set_setting(key: str, body: SettingUpdate):
 @app.get("/counts", dependencies=[Depends(verify_key)])
 async def task_counts():
     return await db_get_task_counts()
+
+
+# ---------------------------------------------------------------------------
+# Messages — conversation history
+# ---------------------------------------------------------------------------
+
+@app.post("/messages", dependencies=[Depends(verify_key)])
+async def save_message(body: MessageCreate):
+    msg_id = await db_save_message(body.role, body.content)
+    return {"id": msg_id}
+
+
+@app.get("/messages/recent", dependencies=[Depends(verify_key)])
+async def get_recent_messages(limit: int = 20):
+    return await db_get_recent_messages(limit)
+
+
+@app.get("/messages/unprocessed", dependencies=[Depends(verify_key)])
+async def get_unprocessed_messages(limit: int = 50):
+    return await db_get_unprocessed_messages(limit)
+
+
+@app.post("/messages/processed", dependencies=[Depends(verify_key)])
+async def mark_messages_processed(body: MessagesProcessed):
+    await db_mark_messages_processed(body.ids)
+    return {"ok": True}

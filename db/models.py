@@ -9,6 +9,12 @@ class Task:
     type: str  # idea | todo | note | ...
     created_at: datetime
     status: str  # pending | processing | done | error
+    deadline: str | None = None
+    urgency: str | None = None
+    due_date: str | None = None
+    due_time: str | None = None
+    notified_at: str | None = None
+    completed_notified: int = 0
 
 
 @dataclass

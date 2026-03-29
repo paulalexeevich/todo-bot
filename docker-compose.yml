@@ -19,6 +19,8 @@ services:
     depends_on:
       data-api:
         condition: service_healthy
+      memory-agent:
+        condition: service_healthy
     restart: unless-stopped
 
   dashboard:
@@ -33,5 +35,44 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  neo4j:
+    image: neo4j:5
+    environment:
+      NEO4J_AUTH: neo4j/changeme
+    ports:
+      - "7474:7474"   # Neo4j Browser (http)
+      - "7687:7687"   # Bolt protocol
+    volumes:
+      - neo4j_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "cypher-shell", "-u", "neo4j", "-p", "changeme", "RETURN 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  memory-agent:
+    build: ./memory-agent
+    env_file: .env
+    environment:
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=neo4j
+      - NEO4J_PASSWORD=changeme
+    ports:
+      - "8002:8002"
+    depends_on:
+      data-api:
+        condition: service_healthy
+      neo4j:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 volumes:
   task_data:
+  neo4j_data:

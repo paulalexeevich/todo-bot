@@ -30,31 +30,54 @@ A personal Telegram bot that captures any kind of thought — startup ideas, tas
 
 ```
 Telegram free-text → python-telegram-bot v20+ (async)
-                           │
-                    LLM Classifier (agent/classifier.py)
-                           │
-          ┌────────────────┼──────────────────┐
-          ▼                ▼                  ▼
-       idea             shopping         architecture
-          │                │             learning
-   nightly job      deadline prompt    GitHub API
-   (discovery)             │           (bot/integrations/github.py)
-          │          deadline parse
-          ▼                │
-  LangGraph Discovery   BuyerGraph
-  Pipeline              (agent/buyer_graph.py)
-  (agent/graph.py)           │
-          │             DuckDuckGo search
-          ▼                  │
-  data-api HTTP client   data-api HTTP client
-  (db/client.py)         (db/client.py)
-          │
-  data-api FastAPI service (data-api/)
-          │
-       SQLite
+        │
+        ├─ save message (user) → data-api /messages   ← short-term memory
+        │
+        ▼
+  LLM Classifier (agent/classifier.py)
+        │  ↑ long-term context via MCP query_memory
+        │  └─ MCP client → memory-agent:8002/mcp
+        │
+        ┌────────────────┼──────────────────┐
+        ▼                ▼                  ▼
+     idea             shopping         architecture
+        │                │             learning
+ nightly job      deadline prompt    GitHub API
+ (discovery)             │           (bot/integrations/github.py)
+        │          deadline parse
+        ▼                │
+LangGraph Discovery   BuyerGraph
+Pipeline              (agent/buyer_graph.py)
+(agent/graph.py)           │
+        │             DuckDuckGo search
+        ▼                  │
+data-api HTTP client   data-api HTTP client
+(db/client.py)         (db/client.py)
+        │
+data-api FastAPI service (data-api/)
+        │
+     SQLite (tasks, messages, settings, offers, discoveries)
+
+Memory update schedule (bot/jobs/memory.py):
+  Tier 1 — after every bot reply  → POST memory-agent/memory/process-now
+  Tier 2 — 10 min session idle    → POST memory-agent/memory/process-session
+  Tier 3 — daily 03:00 UTC        → POST memory-agent/memory/reflect
+
+memory-agent:
+  - MCP server at /mcp (FastMCP, streamable-http transport)
+    tools: query_memory, save_memory, list_entities
+  - Background: polls /messages/unprocessed → LLM extracts → Neo4j
+  - /memory/process-session — session-level pattern extraction
+  - /memory/reflect — daily graph consolidation (merge duplicates, prune stale)
+
+Neo4j knowledge graph:
+  Nodes: Person, Preference, RecurringEvent, Place, Topic
+  Relationships: KNOWS, HAS_PREFERENCE, ATTENDS, LOCATED_AT, INTERESTED_IN
 ```
 
 The bot never accesses SQLite directly. All persistence goes through the `data-api` service via `db/client.py` (an async `httpx` client).
+
+MCP is used for memory access. The bot's LangChain agent receives `query_memory`, `save_memory`, and `list_entities` as tools from the memory-agent MCP server. The LLM calls them autonomously when relevant.
 
 ---
 
@@ -166,6 +189,8 @@ All vars are defined in `config.py` via `pydantic-settings`. See `.env.example`.
 | `HOME_LOCATION` | Fallback home location (e.g. `Moscow, Russia`) |
 | `DATA_API_URL` | URL of data-api service (default: `http://data-api:8001`) |
 | `DATA_API_KEY` | Shared secret for data-api auth (`X-API-Key` header) |
+| `MEMORY_AGENT_URL` | URL of memory-agent MCP server (default: `http://memory-agent:8002`) |
+| `NEO4J_PASSWORD` | Neo4j password — set in both `.env` and `docker-compose.yml` env section |
 | `DISCOVERY_HOUR` | UTC hour for nightly run (default: 2) |
 | `DISCOVERY_MINUTE` | UTC minute for nightly run (default: 0) |
 
@@ -379,10 +404,54 @@ pytest tests/test_pipeline.py -v       # full pipeline (mocked LLM + nodes)
 
 ---
 
-## Deployment Notes
+## Deployment
 
-- Docker Compose is the standard deployment unit — both services in the same compose file
-- `fly.toml` present for Fly.io deployment
-- SQLite is stored in a named Docker volume (`task_data`) — persists across container restarts
-- Bot uses long polling — suitable for VPS; `post_init` handles 409 Conflict on restart
-- `TELEGRAM_USER_ID` guard prevents the bot from responding to anyone else if the token leaks
+**Live system: VPS running Docker Compose.** The `fly.toml` is legacy (old single-service deployment) and is NOT used — do not deploy via `fly deploy`.
+
+### Services (docker-compose.yml)
+
+| Service | Port | Notes |
+|---------|------|-------|
+| `data-api` | 8001 | FastAPI + SQLite, named volume `task_data` |
+| `idea-bot` | — | Telegram bot (long polling) |
+| `dashboard` | 3000 | Next.js web UI |
+| `neo4j` | 7474 / 7687 | Knowledge graph DB. Requires ≥512 MB RAM. Browser UI at `:7474` |
+| `memory-agent` | 8002 | MCP server + background extraction. Depends on neo4j + data-api |
+
+### Deploy new changes to VPS
+
+```bash
+# SSH into VPS, then:
+cd ~/idea-bot          # or wherever the repo lives
+git pull
+docker compose up --build -d
+docker compose ps      # verify all services healthy
+docker compose logs memory-agent --tail=30
+```
+
+### First-time setup (after adding memory-agent + neo4j)
+
+Add to `.env` before starting:
+```
+MEMORY_AGENT_URL=http://memory-agent:8002
+NEO4J_PASSWORD=changeme        # change this
+```
+
+Neo4j takes ~30 s to become healthy; `memory-agent` waits for it automatically via Docker healthcheck.
+
+### VPS memory requirement
+
+`neo4j` needs at least **512 MB free RAM**. The original `fly.toml` allocated 256 MB — that is why Fly.io is no longer viable for this stack. If the VPS is memory-constrained, use [Neo4j Aura free tier](https://neo4j.com/cloud/platform/aura-graph-database/) and point `NEO4J_URI` in `.env` at the Aura connection string.
+
+### Volumes
+
+| Volume | Service | Contents |
+|--------|---------|----------|
+| `task_data` | data-api | SQLite database — persists across restarts |
+| `neo4j_data` | neo4j | Knowledge graph — persists across restarts |
+
+### Other notes
+
+- Bot uses long polling — `post_init` calls `delete_webhook(drop_pending_updates=True)` + 2 s sleep to prevent 409 Conflict on restart.
+- `TELEGRAM_USER_ID` guard silently ignores all other users even if the token leaks.
+- `fly.toml` is kept in repo for reference — Fly.io app `idea-pasha-bot` (region: ams) predates the multi-service architecture and is no longer the live deployment.
