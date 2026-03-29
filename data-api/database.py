@@ -103,6 +103,8 @@ async def init_db() -> None:
             await db.execute("ALTER TABLE tasks ADD COLUMN deadline TEXT")
         if task_cols and "urgency" not in task_cols:
             await db.execute("ALTER TABLE tasks ADD COLUMN urgency TEXT")
+        if task_cols and "due_date" not in task_cols:
+            await db.execute("ALTER TABLE tasks ADD COLUMN due_date TEXT")
         if task_cols and "due_time" not in task_cols:
             await db.execute("ALTER TABLE tasks ADD COLUMN due_time TEXT")
         if task_cols and "notified_at" not in task_cols:
