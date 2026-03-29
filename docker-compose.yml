@@ -21,5 +21,17 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  dashboard:
+    build: ./dashboard
+    env_file: .env
+    environment:
+      - DATA_API_URL=http://data-api:8001
+    ports:
+      - "3000:3000"
+    depends_on:
+      data-api:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   task_data:

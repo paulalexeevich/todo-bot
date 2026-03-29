@@ -6,11 +6,12 @@ This repo is part of the **ToDo** personal productivity system. All repositories
 
 | Repo | Type | Status | Description |
 |------|------|--------|-------------|
-| [paulalexeevich/todo-bot](https://github.com/paulalexeevich/todo-bot) | UI | current repo | Telegram interface |
-| [paulalexeevich/todo-dashboard](https://github.com/paulalexeevich/todo-dashboard) | UI | active | Next.js web interface |
-| [paulalexeevich/todo-api](https://github.com/paulalexeevich/todo-api) | Core | planned | Task storage, classifier, orchestration, scheduler |
+| [paulalexeevich/todo-bot](https://github.com/paulalexeevich/todo-bot) | UI + Core | current repo | Telegram bot, Next.js dashboard (`dashboard/`), data-api (`data-api/`) — **live system** |
+| [paulalexeevich/todo-api](https://github.com/paulalexeevich/todo-api) | Core | planned migration | Future standalone core (not yet live) |
 | [paulalexeevich/discovery-agent](https://github.com/paulalexeevich/discovery-agent) | Agent | planned | Standalone idea validation pipeline |
 | [paulalexeevich/buyer-agent](https://github.com/paulalexeevich/buyer-agent) | Agent | planned | Standalone product search pipeline |
+
+> **Note for agents**: The live data API is `data-api/` in this repo, running as a Docker service on the VPS. The `todo-api` repo is a planned future migration — it has no live data.
 
 ---
 
@@ -77,7 +78,7 @@ idea-bot/
 ├── CLAUDE.md               # this file
 ├── .env.example            # all required env vars documented
 ├── .env                    # gitignored — actual secrets
-├── docker-compose.yml      # two services: data-api + idea-bot
+├── docker-compose.yml      # three services: data-api + idea-bot + dashboard
 ├── Dockerfile              # idea-bot image
 ├── fly.toml                # Fly.io deployment config
 ├── pyproject.toml
@@ -118,6 +119,12 @@ idea-bot/
 │   ├── test_db.py
 │   ├── test_nodes.py
 │   └── test_pipeline.py
+├── dashboard/              # Next.js web UI (deployed to Vercel or Docker)
+│   ├── app/                # Next.js App Router pages
+│   ├── components/         # UI components
+│   ├── lib/api.ts          # all data-api HTTP calls + TypeScript types
+│   ├── Dockerfile          # standalone Next.js Docker image (port 3000)
+│   └── next.config.ts      # output: standalone
 └── data/                   # gitignored — SQLite file lives here (inside data-api container)
 ```
 
