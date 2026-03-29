@@ -136,7 +136,7 @@ def _get_llm(provider: str, anthropic_key: str, openai_key: str, gemini_key: str
         return ChatOpenAI(model="gpt-4o-mini", api_key=openai_key)
     else:  # gemini (default)
         from langchain_google_genai import ChatGoogleGenerativeAI
-        return ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key=gemini_key)
+        return ChatGoogleGenerativeAI(model="gemini-2.5-flash", google_api_key=gemini_key)
 
 
 # ---------------------------------------------------------------------------
